@@ -6,12 +6,12 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { root, prepareDirectory, saveJob, processJob } from '@/lib/jobs';
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth';
 import type { Job } from '@/types';
 export const runtime = 'nodejs';
 const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024;
 export async function POST(request: Request) {
-  const session = await auth.api.getSession({ headers: request.headers });
+  const session = getAuthSession(request.headers);
   if (!session) return NextResponse.json({error: 'Войдите в аккаунт, чтобы загрузить видео.'}, {status: 401});
   let jobDirectory = '';
   try {

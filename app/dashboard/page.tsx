@@ -2,14 +2,14 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Clock3, Film, Plus, Sparkles } from 'lucide-react';
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth';
 import { listJobs } from '@/lib/jobs';
 import SignOutButton from '@/components/sign-out-button';
 
 const statusLabels: Record<string, string> = {Uploaded:'Загружено',Transcribing:'Расшифровка', 'Detecting pauses':'Поиск пауз', 'Finding highlights':'Поиск моментов', 'Generating subtitles':'Создание субтитров', 'Exporting clips':'Экспорт', Done:'Готово', Failed:'Ошибка'};
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = getAuthSession(await headers());
   if (!session) redirect('/login');
   const jobs = await listJobs(session.user.id);
   return <div className="page dashboard">

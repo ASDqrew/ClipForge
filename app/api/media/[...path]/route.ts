@@ -1,10 +1,10 @@
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { getJob, root } from '@/lib/jobs';
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth';
 export const runtime = 'nodejs';
 export async function GET(request: Request, context: {params: Promise<{path: string[]}>}) {
-  const session = await auth.api.getSession({ headers: request.headers });
+  const session = getAuthSession(request.headers);
   if (!session) return new Response('Требуется авторизация', {status: 401});
   const parts = (await context.params).path;
   if (parts.length !== 2 || !/^[0-9a-f-]{36}$/.test(parts[0]) || !/^[123]\.(mp4|srt)$/.test(parts[1])) return new Response('Не найдено', {status: 404});
