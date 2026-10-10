@@ -1,15 +1,61 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Check, LoaderCircle, ArrowLeft, Download } from 'lucide-react';
 import { steps, type Job } from '@/types';
-export default function JobView({id, results=false}:{id:string;results?:boolean}) {
- const [job,setJob]=useState<Job|null>(null);const [error,setError]=useState('');const [edit,setEdit]=useState('');const router=useRouter();
- useEffect(()=>{let stopped=false;let timer:ReturnType<typeof setTimeout>;async function poll(){try{const response=await fetch(`/api/jobs/${id}`,{cache:'no-store'});if(!response.ok)throw new Error(response.status===404?'This job was not found.':'Unable to load your job.');const data:Job=await response.json();if(stopped)return;setJob(data);setError('');if(data.status==='Done'&&!results){router.replace(`/results/${id}`);return;}if(data.status!=='Done'&&data.status!=='Failed')timer=setTimeout(poll,1200);}catch(e){if(!stopped){setError(e instanceof Error?e.message:'Connection failed');timer=setTimeout(poll,4000);}}}poll();return()=>{stopped=true;clearTimeout(timer);};},[id,results,router]);
- if(!job)return <div className="page empty"><LoaderCircle className="spin mx-auto text-[#c3f36b]"/><p role="status">{error||'Loading your job…'}</p><Link href="/upload" className="back">Back to upload</Link></div>;
- if(job.status==='Failed')return <div className="page"><h1>We couldn’t process this video.</h1><p className="notice error" role="alert">{job.error}</p><p className="page-desc">Check that the file is a playable video and try again. FFmpeg and FFprobe must be installed on the server.</p><Link href="/upload" className="primary">Try another video</Link></div>;
- if(results&&job.status==='Done')return <div className="page"><Link className="back" href="/upload"><ArrowLeft size={14}/> Upload another video</Link><div className="step-nav"><span>01 / Upload</span><span>02 / Process</span><span className="active">03 / Your clips</span></div><div className="eyebrow">YOUR NEXT MOMENTS</div><h1>One video. Three fresh takes.</h1><p className="page-desc">Clips from {job.filename}. Preview, download, and make them yours.</p><div className="notice">Demo highlights and captions · These hooks are mock text, not your actual transcript. Subtitle files are separate; captions are not burned in. Pause removal and vertical reframing are coming later.</div><div className="results-grid">{job.clips.map((clip,i)=><article className="clip-card" key={clip.id}><video className="clip-preview" controls preload="metadata" src={clip.url} aria-label={clip.title}/><div className="clip-body"><div className="clip-meta"><span>CLIP 0{i+1}</span><span>{(clip.end-clip.start).toFixed(1)} SEC</span></div><h3>{clip.title}</h3><p className="hook">“{clip.hook}”</p><p className="reason">{clip.reason}</p><div className="clip-actions"><a className="primary" href={`${clip.url}?download=1`} download><Download size={14}/> Download</a><button className="secondary" onClick={()=>setEdit(clip.id)}>Edit later</button></div><a className="sub-link" href={`/api/media/${id}/${clip.id}.srt?download=1`} download>↓ Download demo subtitles (.srt)</a>{edit===clip.id&&<p role="status" className="edit-note">The clip editor is coming in a future version.</p>}</div></article>)}</div></div>;
- const active=steps.indexOf(job.status);
- return <div className="page"><div className="step-nav"><span>01 / Upload</span><span className="active">02 / Process</span><span>03 / Your clips</span></div><h1>A little less long. A lot more you.</h1><p className="page-desc">Preparing clips from {job.filename}. You can keep this page open.</p>{error&&<p className="notice error">{error} Retrying…</p>}<div className="processing-card"><div className="eyebrow"><LoaderCircle size={15} className="spin"/> CREATING YOUR CLIPS</div><div className="progress-track"><div style={{width:`${Math.max(5,active/6*100)}%`}}/></div><div aria-live="polite">{steps.map((step,i)=><div key={step} className={`processing-step ${i<active?'complete':i===active?'current':''}`}><span className="step-circle">{i<active?<Check size={14}/>:i===active?<LoaderCircle size={14} className="spin"/>:i+1}</span>{step}{i===active&&<span className="ml-auto text-xs">In progress</span>}</div>)}</div></div><p className="fine text-center">AI steps use demo data. Exporting uses FFmpeg and may take a few minutes.</p></div>;
+
+const labels: Record<string, string> = {
+  Uploaded: 'Видео загружено',
+  Transcribing: 'Расшифровываем речь',
+  'Detecting pauses': 'Ищем паузы',
+  'Finding highlights': 'Находим яркие моменты',
+  'Generating subtitles': 'Создаём субтитры',
+  'Exporting clips': 'Экспортируем клипы',
+  Done: 'Готово',
+};
+
+export default function JobView({id, results = false}: {id: string; results?: boolean}) {
+  const [job, setJob] = useState<Job | null>(null);
+  const [error, setError] = useState('');
+  const [edit, setEdit] = useState('');
+  const router = useRouter();
+
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const response = await fetch(`/api/jobs/${id}`, {cache: 'no-store'});
+        if (response.status === 401) { router.replace('/login'); return; }
+        if (!response.ok) throw new Error(response.status === 404 ? 'Эта задача не найдена.' : 'Не удалось загрузить задачу.');
+        const data: Job = await response.json();
+        if (stopped) return;
+        setJob(data); setError('');
+        if (data.status === 'Done' && !results) { router.replace(`/results/${id}`); return; }
+        if (data.status !== 'Done' && data.status !== 'Failed') timer = setTimeout(poll, 1200);
+      } catch (caught) {
+        if (!stopped) { setError(caught instanceof Error ? caught.message : 'Ошибка соединения.'); timer = setTimeout(poll, 4000); }
+      }
+    }
+    poll();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [id, results, router]);
+
+  if (!job) return <div className="page empty"><LoaderCircle className="spin mx-auto text-[#c3f36b]"/><p role="status">{error || 'Загружаем задачу…'}</p><Link href="/dashboard" className="back">В личный кабинет</Link></div>;
+  if (job.status === 'Failed') return <div className="page"><h1>Не удалось обработать видео</h1><p className="notice error" role="alert">{job.error}</p><p className="page-desc">Проверьте, что файл воспроизводится и имеет формат MP4, MOV или WebM.</p><Link href="/upload" className="primary">Выбрать другое видео</Link></div>;
+  if (results && job.status === 'Done') return <div className="page">
+    <Link className="back" href="/dashboard"><ArrowLeft size={14}/> В личный кабинет</Link>
+    <div className="step-nav"><span>01 / Загрузка</span><span>02 / Обработка</span><span className="active">03 / Ваши клипы</span></div>
+    <div className="eyebrow">НОВЫЕ МОМЕНТЫ</div><h1>Одно видео. Три свежих клипа.</h1><p className="page-desc">Фрагменты из «{job.filename}». Посмотрите и скачайте результат.</p>
+    <div className="notice">Демонстрационный режим: заголовки и текст субтитров пока не основаны на реальной речи. Субтитры скачиваются отдельно и ещё не вшиты в видео.</div>
+    <div className="results-grid">{job.clips.map((clip, index) => <article className="clip-card" key={clip.id}>
+      <video className="clip-preview" controls preload="metadata" src={clip.url} aria-label={clip.title}/>
+      <div className="clip-body"><div className="clip-meta"><span>КЛИП 0{index + 1}</span><span>{(clip.end - clip.start).toFixed(1)} СЕК</span></div><h3>{clip.title}</h3><p className="hook">«{clip.hook}»</p><p className="reason">{clip.reason}</p><div className="clip-actions"><a className="primary" href={`${clip.url}?download=1`} download><Download size={14}/> Скачать</a><button className="secondary" onClick={() => setEdit(clip.id)}>Редактировать позже</button></div><a className="sub-link" href={`/api/media/${id}/${clip.id}.srt?download=1`} download>↓ Скачать демо-субтитры (.srt)</a>{edit === clip.id && <p role="status" className="edit-note">Редактор клипов появится в следующей версии.</p>}</div>
+    </article>)}</div>
+  </div>;
+
+  const active = steps.indexOf(job.status);
+  return <div className="page"><div className="step-nav"><span>01 / Загрузка</span><span className="active">02 / Обработка</span><span>03 / Ваши клипы</span></div><h1>Скоро станет короче. И ярче.</h1><p className="page-desc">Готовим клипы из «{job.filename}». Эту страницу можно оставить открытой.</p>{error && <p className="notice error">{error} Повторяем попытку…</p>}<div className="processing-card"><div className="eyebrow"><LoaderCircle size={15} className="spin"/> СОЗДАЁМ КЛИПЫ</div><div className="progress-track"><div style={{width: `${Math.max(5, active / 6 * 100)}%`}}/></div><div aria-live="polite">{steps.map((step, index) => <div key={step} className={`processing-step ${index < active ? 'complete' : index === active ? 'current' : ''}`}><span className="step-circle">{index < active ? <Check size={14}/> : index === active ? <LoaderCircle size={14} className="spin"/> : index + 1}</span>{labels[step]}{index === active && <span className="ml-auto text-xs">В процессе</span>}</div>)}</div></div><p className="fine text-center">AI-этапы используют демонстрационные данные. Экспорт выполняется через FFmpeg и может занять несколько минут.</p></div>;
 }

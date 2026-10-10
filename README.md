@@ -1,36 +1,44 @@
 # ClipForge
 
-Next.js / TypeScript / Tailwind MVP with local storage and real FFmpeg clip exports.
+Русскоязычный MVP-сервис на Next.js, TypeScript и Tailwind CSS. Пользователь регистрируется, загружает длинное видео и получает три коротких фрагмента, созданных с помощью FFmpeg.
 
-## Run
+## Локальный запуск
 
-Requires Node.js 22+ and FFmpeg/FFprobe on PATH.
+Потребуются Node.js 22+, FFmpeg и FFprobe в `PATH`.
 
 ```sh
 npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
-Open the development server, upload an MP4/MOV/WebM (up to 200 MB), watch processing, then preview and download three clips and demo SRT files.
+На Windows скопируйте файл настроек командой `Copy-Item .env.example .env.local`. Откройте `http://localhost:3000`, зарегистрируйтесь по email и загрузите MP4, MOV или WebM размером до 2 ГБ.
 
-Validation: `npm run typecheck` and `npm run build`. Production: `npm run build && npm start`.
+Проверки: `npm run typecheck` и `npm run build`. Запуск production-сборки: `npm run build && npm start`.
 
-## Architecture
+## Авторизация
 
-- `app/`: landing, upload, processing/results, and Node API routes
-- `components/`: polling job view
-- `lib/jobs/`: atomic JSON persistence and background pipeline
-- `lib/video/`: FFprobe metadata, FFmpeg exports, silence detection and subtitle helpers
-- `lib/transcription/`: replaceable mock transcription provider
-- `lib/highlights/`: mock timestamp suggestions
-- `types/`: shared job, transcript, segment and clip models
+Аккаунт по email и паролю работает локально и хранится в `data/auth.sqlite`. Перед публичным размещением обязательно задайте случайный `BETTER_AUTH_SECRET` длиной не менее 32 символов.
 
-Files live in ignored `data/<job-id>/`. Jobs run after the upload response via Next.js `after`. Run on a persistent Node server, not ephemeral serverless hosting. Live jobs are not durable across a server restart; there is no queue recovery in this MVP. Keep concurrent uploads low: uploads/serving are buffered in memory, and FFmpeg work is local. There is no authentication or automatic retention cleanup; use test videos and delete `data/` manually when no jobs are running.
+Google OAuth включается переменными `GOOGLE_CLIENT_ID` и `GOOGLE_CLIENT_SECRET`. Для Google укажите callback URL `http://localhost:3000/api/auth/callback/google` (или тот же путь на вашем домене).
 
-## Mock boundaries / next steps
+Вход по телефону использует SMS-коды Twilio. Добавьте `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` и `TWILIO_FROM_NUMBER`. Без этих значений кнопки Google и телефона честно показываются как не настроенные; email-вход продолжает работать.
 
-Transcription and highlight selection are explicitly mocked. Clips are real timestamp cuts, preserving source aspect ratio. SRT downloads contain labeled demo captions. Silence removal is a scaffold that throws until synchronized audio/video trimming is implemented. Burn-in utility exists but is not connected to demo exports. Connect real transcription, LLM highlights, accurate caption burn-in, vertical reframing, a durable bounded queue, streaming uploads/downloads and cleanup before production use.
+## Архитектура
 
-No accounts, payments, database, or timeline editor are included.
+- `app/` — русские страницы, личный кабинет и Node API routes
+- `components/` — формы авторизации, навигация и экран обработки
+- `lib/auth*` — Better Auth, SQLite, Google OAuth и SMS OTP
+- `lib/jobs/` — JSON-задачи, привязанные к пользователю, и фоновая обработка
+- `lib/video/` — FFprobe, FFmpeg, поиск тишины и подготовка субтитров
+- `lib/transcription/` — заменяемый mock-провайдер транскрибации
+- `lib/highlights/` — демонстрационный выбор трёх таймкодов
+- `types/` — общие модели задач, транскрипта и клипов
 
-Functional smoke test (server running): `node scripts/smoke.mjs /path/to/short-test.mp4`. It creates a local job and checks validation, completion, three downloads, byte ranges, subtitles, results and missing-job responses.
+Загрузка идёт потоком прямо на диск, поэтому файл до 2 ГБ не копируется целиком в память. Данные лежат в игнорируемой папке `data/`; API задач, видео и субтитров проверяют сессию и владельца.
+
+## Ограничения MVP
+
+Расшифровка и выбор лучших моментов пока демонстрационные. Сами MP4-фрагменты реальные, но сохраняют исходное соотношение сторон. SRT содержит явно помеченный демонстрационный текст и скачивается отдельно. Удаление пауз и вшивание точных субтитров подготовлены как точки расширения.
+
+Для публичного продукта потребуются постоянное файловое хранилище, очередь FFmpeg с ограничением параллельности, восстановление задач после перезапуска, лимиты по тарифу, удаление старых файлов и резервное копирование SQLite либо переход на PostgreSQL. Обратный прокси также должен разрешать тела запросов до 2 ГБ и длительные загрузки.

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Job } from '@/types';
 import { readMetadata, cutClip, writeSubtitles } from '@/lib/video/ffmpeg';
@@ -13,6 +13,14 @@ export async function getJob(id: string): Promise<Job | null> {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   try { return JSON.parse(await readFile(path.join(root, id, 'job.json'), 'utf8')); } catch { return null; }
 }
+export async function listJobs(userId: string): Promise<Job[]> {
+  await mkdir(root, { recursive: true });
+  const entries = await readdir(root, { withFileTypes: true });
+  const jobs = await Promise.all(entries.filter((entry) => entry.isDirectory()).map((entry) => getJob(entry.name)));
+  return jobs
+    .filter((job): job is Job => Boolean(job && job.userId === userId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
 export async function processJob(job: Job) {
   const update = async (status: Job['status']) => {job.status = status; await saveJob(job);};
   try {
@@ -21,7 +29,7 @@ export async function processJob(job: Job) {
     await update('Detecting pauses'); // TODO: use detectSilence + synchronized trim plan; demo leaves pauses intact.
     await update('Finding highlights'); job.clips = await detectHighlights(job.transcript, job.duration);
     await update('Generating subtitles');
-    for (const clip of job.clips) await writeSubtitles(path.join(root, job.id, `${clip.id}.srt`), [{start: 0, end: clip.end - clip.start, text: '[Demo subtitle] ' + clip.hook}]);
+    for (const clip of job.clips) await writeSubtitles(path.join(root, job.id, `${clip.id}.srt`), [{start: 0, end: clip.end - clip.start, text: '[Демо-субтитры] ' + clip.hook}]);
     await update('Exporting clips');
     for (const clip of job.clips) {
       await cutClip(job.source, path.join(root, job.id, `${clip.id}.mp4`), clip.start, clip.end);
@@ -30,6 +38,6 @@ export async function processJob(job: Job) {
       await saveJob(job);
     }
     await update('Done');
-  } catch (error) { job.error = error instanceof Error ? error.message.slice(0, 300) : 'Processing failed'; await update('Failed'); }
+  } catch (error) { job.error = error instanceof Error ? error.message.slice(0, 300) : 'Не удалось обработать видео'; await update('Failed'); }
 }
 export async function prepareDirectory(id: string) { await mkdir(path.join(root, id), {recursive: true}); }

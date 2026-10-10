@@ -1,8 +1,11 @@
 import { getJob } from '@/lib/jobs';
+import { auth } from '@/lib/auth';
 import { NextResponse } from 'next/server';
-export async function GET(_request: Request, {params}: {params: Promise<{id: string}>}) {
+export async function GET(request: Request, {params}: {params: Promise<{id: string}>}) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) return NextResponse.json({error: 'Требуется авторизация'}, {status: 401});
   const job = await getJob((await params).id);
-  if (!job) return NextResponse.json({error: 'Job not found'}, {status: 404});
-  const {source, ...publicJob} = job; void source;
+  if (!job || job.userId !== session.user.id) return NextResponse.json({error: 'Задача не найдена'}, {status: 404});
+  const {source, userId, ...publicJob} = job; void source; void userId;
   return NextResponse.json(publicJob, {headers: {'Cache-Control': 'no-store'}});
 }

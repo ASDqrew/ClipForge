@@ -1,10 +1,15 @@
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { root } from '@/lib/jobs';
+import { getJob, root } from '@/lib/jobs';
+import { auth } from '@/lib/auth';
 export const runtime = 'nodejs';
 export async function GET(request: Request, context: {params: Promise<{path: string[]}>}) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) return new Response('Требуется авторизация', {status: 401});
   const parts = (await context.params).path;
-  if (parts.length !== 2 || !/^[0-9a-f-]{36}$/.test(parts[0]) || !/^[123]\.(mp4|srt)$/.test(parts[1])) return new Response('Not found', {status: 404});
+  if (parts.length !== 2 || !/^[0-9a-f-]{36}$/.test(parts[0]) || !/^[123]\.(mp4|srt)$/.test(parts[1])) return new Response('Не найдено', {status: 404});
+  const job = await getJob(parts[0]);
+  if (!job || job.userId !== session.user.id) return new Response('Не найдено', {status: 404});
   const file = path.join(root, ...parts);
   try {
     const {size} = await stat(file); const range = request.headers.get('range');
@@ -21,5 +26,5 @@ export async function GET(request: Request, context: {params: Promise<{path: str
     if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
     if (new URL(request.url).searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="clip-${parts[1]}"`;
     return new Response(buffer, {status: range ? 206 : 200, headers});
-  } catch { return new Response('Not found', {status: 404}); }
+  } catch { return new Response('Не найдено', {status: 404}); }
 }
